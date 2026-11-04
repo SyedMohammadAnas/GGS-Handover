@@ -1,0 +1,21 @@
+# LAN mode: everything is reachable on http://<server-LAN-IP>:<port> — no domain, no HTTPS.
+# Selected automatically by ./install.sh (COMPOSE_FILE in .env).
+
+services:
+  gateway:
+    ports:
+      - "8000:80"
+
+  api:
+    ports:
+      - "3000:3000"
+
+  expert:
+    ports:
+      - "3002:3002"
+
+  livekit:
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"

@@ -1,0 +1,23 @@
+# Rendered to config/Caddyfile by ./install.sh. @DOMAIN@ is your domain.
+# Each name below must have a DNS "A" record pointing at this server's public IP.
+
+app.@DOMAIN@ {
+	reverse_proxy expert:3002
+}
+
+api.@DOMAIN@ {
+	request_body {
+		max_size 100MB
+	}
+	reverse_proxy api:3000
+}
+
+sb.@DOMAIN@ {
+	reverse_proxy gateway:80 {
+		header_up X-Forwarded-Proto https
+	}
+}
+
+lk.@DOMAIN@ {
+	reverse_proxy livekit:7880
+}

@@ -1,0 +1,4 @@
+version: 1
+bundleID: com.ggsapple.remotear.ios
+product: GGSApple
+infoPath: xtool-Info.plist

@@ -1,0 +1,17 @@
+# Rendered to config/livekit.yaml by ./install.sh.
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+@RTC_ADDRESS@
+
+keys:
+  @LIVEKIT_API_KEY@: @LIVEKIT_API_SECRET@
+
+room:
+  empty_timeout: 300
+  max_participants: 2
+
+logging:
+  level: info

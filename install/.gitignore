@@ -1,0 +1,7 @@
+# Generated per installation — never commit.
+.env
+client-config.txt
+config/Caddyfile
+config/livekit.yaml
+data/
+backups/

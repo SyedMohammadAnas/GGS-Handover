@@ -1,0 +1,30 @@
+# Domain mode: automatic HTTPS (Let's Encrypt) through Caddy on your own domain.
+# Selected automatically by ./install.sh (COMPOSE_FILE in .env).
+# Public ports needed on the server: 80/tcp, 443/tcp, 7881/tcp, 7882/udp.
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - gateway
+      - api
+      - expert
+      - livekit
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  livekit:
+    ports:
+      # Media only. Signalling (wss) goes through Caddy on 443.
+      - "7881:7881"
+      - "7882:7882/udp"
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,161 @@
+# Assist AR (GGS) — self-hosted stack.
+#
+# Do not edit by hand. `./install.sh` writes `.env`, `config/*` and picks the right
+# override file (docker-compose.lan.yml or docker-compose.domain.yml) for you.
+#
+# Services: db (Postgres) · auth (sign-in) · rest (database API) · gateway (one address for
+# sign-in + database) · api (Express: sessions + 3D models) · expert (web console) ·
+# livekit (live video).
+
+name: ggs
+
+services:
+  db:
+    image: supabase/postgres:17.6.1.136
+    restart: unless-stopped
+    volumes:
+      - ./sql/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
+      - ./sql/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
+      - ./data/db:/var/lib/postgresql/data
+      - db-config:/etc/postgresql-custom
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: 5432
+      POSTGRES_PORT: 5432
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: postgres
+      POSTGRES_DB: postgres
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXP: 3600
+    command:
+      [
+        "postgres",
+        "-c", "config_file=/etc/postgresql/postgresql.conf",
+        "-c", "log_min_messages=fatal",
+      ]
+
+  auth:
+    image: supabase/gotrue:v2.189.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${SUPABASE_PUBLIC_URL}/auth/v1
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL: ${EXPERT_PUBLIC_URL}
+      GOTRUE_URI_ALLOW_LIST: ${EXPERT_PUBLIC_URL}/**
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      # Email + password only. No emails are sent: accounts are confirmed immediately.
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
+      GOTRUE_SMTP_ADMIN_EMAIL: noreply@localhost
+      GOTRUE_SMTP_HOST: localhost
+      GOTRUE_SMTP_PORT: 2500
+
+  rest:
+    image: postgrest/postgrest:v14.12
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_MAX_ROWS: 1000
+      PGRST_DB_EXTRA_SEARCH_PATH: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_EXP: 3600
+    command: ["postgrest"]
+
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - auth
+      - rest
+    volumes:
+      - ./config/nginx-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      # Local only: used by the installer. Public access is added by the override file.
+      - "127.0.0.1:8000:80"
+
+  api:
+    build:
+      context: ${API_SRC:-..}/backend
+    restart: unless-stopped
+    depends_on:
+      - gateway
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      SUPABASE_URL: http://gateway
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      DASHBOARD_KEY: ${DASHBOARD_KEY}
+      PUBLIC_API_URL: ${API_PUBLIC_URL}
+    volumes:
+      # 3D models uploaded by the admin live here (kept across restarts and rebuilds).
+      - ./data/assets:/app/assets
+
+  expert:
+    build:
+      context: ${EXPERT_SRC:-../expert-web}
+      dockerfile: Containerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_PUBLIC_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+        NEXT_PUBLIC_LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL}
+        NEXT_PUBLIC_BACKEND_ASSETS_URL: ${API_PUBLIC_URL}
+        NEXT_PUBLIC_SITE_URL: ${EXPERT_PUBLIC_URL}
+    restart: unless-stopped
+    depends_on:
+      - gateway
+      - api
+    environment:
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_PUBLIC_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+      NEXT_PUBLIC_LIVEKIT_URL: ${LIVEKIT_PUBLIC_URL}
+      NEXT_PUBLIC_BACKEND_ASSETS_URL: ${API_PUBLIC_URL}
+      NEXT_PUBLIC_SITE_URL: ${EXPERT_PUBLIC_URL}
+      SUPABASE_INTERNAL_URL: http://gateway
+      BACKEND_INTERNAL_URL: http://api:3000
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      DASHBOARD_KEY: ${DASHBOARD_KEY}
+
+  livekit:
+    image: livekit/livekit-server:v1.9.0
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./config/livekit.yaml:/etc/livekit.yaml:ro
+
+volumes:
+  db-config:

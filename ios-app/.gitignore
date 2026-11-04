@@ -1,0 +1,6 @@
+# xtool / SwiftPM build output
+.build/
+.bsp/
+xtool/
+.swiftpm/
+*.ipa

@@ -1,0 +1,7 @@
+# Copy to local.properties (never commit) and fill in your values.
+# These match the values the installer writes to install/client-config.txt.
+sdk.dir=/path/to/Android/sdk
+SUPABASE_URL=https://sb.example.com
+SUPABASE_ANON_KEY=your-anon-key-here
+LIVEKIT_URL=wss://lk.example.com
+API_URL=https://api.example.com
